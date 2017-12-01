@@ -1,0 +1,156 @@
+---
+title: "Tidytexting R-Ladies Meetups"
+author: "Augustina Ragwitz"
+date: "November 30, 2017"
+output: html_document
+---
+
+Github Repo [https://github.com/rladies-pdx/tidytext_meetups]
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r includes, message=FALSE}
+library(dplyr)
+library(gutenbergr)
+library(tidytext)
+library(ggplot2)
+library(stringr)
+library(tidyverse)
+library(readr)
+library(wordcloud)
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+setwd("~/dev/Rladies/tidytext_meetups/data")
+
+meetups <- read_csv("rladies_meetup_events_past.csv")
+
+event_descriptions <- meetups %>%
+  select(id, description, group.localized_location) %>%
+  mutate(line=row_number(), 
+         description = str_replace_all(description, "<[^>]*>", ""),
+         description = str_replace_all(description, regex("[^[:alpha:] ]"), "")) %>%
+  filter(! is.na(description))
+
+event_descr <- event_descriptions %>% unnest_tokens(word,description)
+
+# count words
+event_descr_cnt <- event_descr %>% count(word, sort=TRUE)
+
+# remove common words using an anti_join
+event_descr_cnt_stop <- event_descr %>% anti_join(stop_words) %>% count(word, sort=TRUE)
+
+```
+
+```{r}
+event_descr_top <- event_descr %>%
+  anti_join(stop_words) %>%
+  filter(! str_detect(word, "'")) %>%
+  filter(! str_detect(word, "’")) %>%
+  count(word, sort = TRUE) %>%
+  top_n(40) %>%
+  mutate(word=reorder(word,n))
+
+ggplot(event_descr_top, aes(x=word, y=n)) +
+  geom_bar(stat="identity") +
+  coord_flip()
+
+wordcloud(event_descr_top$word, event_descr_top$n, c(5,.8), colors=event_descr_top$n, min.freq = 20)
+```
+
+```{r, message=FALSE}
+
+event_descr_bow <- event_descr %>% 
+  inner_join(get_sentiments("bing")) %>%
+  count(sentiment, word, sort = TRUE) %>%
+  group_by(sentiment) %>%
+  top_n(20) %>%
+  ungroup %>%
+  mutate(word=reorder(word,n))
+
+ggplot(event_descr_bow, aes(x=word, y=n, fill=sentiment))+
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  facet_wrap(~ sentiment, scales = "free")
+  
+```
+
+
+```{r}
+event_descr_all <- event_descriptions %>%
+  unnest_tokens(word, description) %>%
+  count(group.localized_location, word, sort = TRUE) # input into tfidf
+
+event_descr_tfdf <- event_descr_all %>% 
+  filter(! str_detect(word, "'")) %>% 
+  bind_tf_idf(word, group.localized_location, n) %>% 
+  arrange(-tf_idf)
+
+event_descr_tfdf
+```
+
+```{r}
+ggplot(event_descr_tfdf %>% top_n(50), aes(x=word, y=n, fill=group.localized_location)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ group.localized_location, scales = "free") +
+  coord_flip()
+
+ggplot(event_descr_tfdf %>% filter(str_detect(group.localized_location, ", \\D\\D$")) %>% top_n(50), 
+       aes(x=word, y=n, fill=group.localized_location)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ group.localized_location, scales = "free") +
+  coord_flip()
+
+ggplot(event_descr_tfdf %>% filter(str_detect(group.localized_location, ", \\D\\D$")) %>% top_n(50), 
+       aes(x=reorder(word, n), y=n, fill=group.localized_location)) +
+  geom_col() +
+  coord_flip()
+```
+
+```{r}
+
+tidy_ngram <- event_descriptions %>%
+  unnest_tokens(bigram, description, token = "ngrams", n = 2)
+
+tidy_ngram <- tidy_ngram %>%
+  separate(bigram, c("word1", "word2"), sep=" ") %>%
+  filter(!word1 %in% stop_words$word, !word2 %in% stop_words$word) %>%
+  count(word1, word2, sort = TRUE)
+
+tidy_ngram
+
+tidy_ngram_top <- tidy_ngram %>%
+  top_n(20) %>%
+  mutate(combined = paste(word1, word2))
+
+tidy_ngram_top
+
+ggplot(tidy_ngram_top, aes(x=reorder(combined, n), y=n, fill=word1)) +
+  geom_bar(stat="identity", show.legend = FALSE) +
+  coord_flip()
+```
+
+```{r}
+# words with data
+
+data_bigram <- event_descriptions %>%
+  unnest_tokens(bigram, description, token = "ngrams", n = 2) %>%
+  separate(bigram, c("word1", "word2"), sep=" ") %>%
+  filter(word1 %in% c("data")) %>%
+  filter(!word2 %in% stop_words$word, !str_detect(word2, "'")) %>%
+  count(word1, word2, sort=TRUE)
+
+data_bigram_top <- data_bigram %>% group_by(word1) %>% top_n(25)
+
+ggplot(data_bigram_top, aes(x=reorder(word2, n), y=n, fill=word1)) +
+  geom_bar(stat="identity", show.legend = FALSE) +
+  coord_flip() +
+  facet_wrap(~ word1, scales="free")
+
+
+wordcloud(data_bigram_top$word2, data_bigram_top$n, c(5,1), colors=data_bigram_top$n, min.freq = 5)
+```
+
