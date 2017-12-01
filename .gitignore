@@ -16,6 +16,7 @@
 
 # RStudio files
 .Rproj.user/
+*.Rproj
 
 # produced vignettes
 vignettes/*.html
@@ -28,6 +29,15 @@ vignettes/*.pdf
 /*_cache/
 /cache/
 
+# knitr output
+*.html
+
 # Temporary files created by R markdown
 *.utf8.md
 *.knit.md
+.Rproj.user
+
+# rsconnect
+rsconnect/
+
+
