@@ -1,0 +1,141 @@
+---
+title: "Tutorial!"
+author: "Augustina Ragwitz"
+date: "October 16, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r includes, message=FALSE}
+library(dplyr)
+library(gutenbergr)
+library(tidytext)
+library(ggplot2)
+library(stringr)
+library(tidyverse)
+```
+
+```{r}
+
+
+full_text <- gutenberg_download(4300)
+
+tidy_book <- full_text %>% 
+  mutate(line=row_number()) %>% 
+  unnest_tokens(word,text)
+
+# count words
+tidy_book_count <- tidy_book %>% count(word, sort=TRUE)
+
+# remove common words using an anti_join
+tidy_book_count_stop <- tidy_book %>% anti_join(stop_words) %>% count(word, sort=TRUE)
+
+```
+
+```{r}
+tidy_book_top <- tidy_book %>%
+  anti_join(stop_words) %>%
+  filter(! str_detect(word, "'")) %>%
+  filter(! str_detect(word, "’")) %>%
+  count(word, sort = TRUE) %>%
+  top_n(30) %>%
+  mutate(word=reorder(word,n))
+
+ggplot(tidy_book_top, aes(x=word, y=n)) +
+  geom_bar(stat="identity") +
+  coord_flip()
+```
+
+```{r}
+tidy_book_bow <- tidy_book %>% 
+  inner_join(get_sentiments("bing")) %>%
+  count(sentiment, word, sort = TRUE) %>%
+  group_by(sentiment) %>%
+  top_n(20) %>%
+  ungroup %>%
+  mutate(word=reorder(word,n))
+
+ggplot(tidy_book_bow, aes(x=word, y=n, fill=sentiment))+
+  geom_col(stat="identity", show.legend = FALSE) +
+  coord_flip() +
+  facet_wrap(~ sentiment, scales = "free")
+  
+```
+
+TFIDF -> What is a document about? tf * idf
+Term Frequency <- how often a document uses a word
+IDF <- ratio of word to documents in a collection of documents
+idf(term) = ln( n documents / n documents containing term)
+^^ "weight" to compare words within a collection ^^
+
+```{r}
+
+full_collection <- gutenberg_download(c(4300, 2814, 4217, 2817), meta_fields = "title")
+
+full_collection %>% count(title)
+```
+
+```{r}
+book_words <- full_collection %>%
+  unnest_tokens(word, text) %>%
+  count(title, word, sort = TRUE) # input into tfidf
+
+book_words
+```
+```{r}
+book_words <- book_words %>% filter(! str_detect(word, "'")) %>% bind_tf_idf(word, title, n) %>% arrange(-tf_idf)
+
+book_words
+```
+
+```{r}
+ggplot(book_words %>% top_n(10), aes(x=word, y=n, fill=title)) +
+  geom_col(stat="identity", show.legend = FALSE) +
+  facet_wrap(~ title, scales = "free") +
+  coord_flip()
+```
+
+```{r}
+tidy_ngram <- full_text %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2)
+
+tidy_ngram
+```
+
+```{r}
+tidy_ngram <- tidy_ngram %>%
+  separate(bigram, c("word1", "word2"), sep=" ") %>%
+  filter(!word1 %in% stop_words$word, !word2 %in% stop_words$word) %>%
+  count(word1, word2, sort = TRUE)
+
+tidy_ngram
+  
+```
+
+
+```{r}
+# words with he/she
+he_she <- full_text %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2) %>%
+  separate(bigram, c("word1", "word2"), sep=" ") %>%
+  filter(word1 %in% c("he", "she")) %>%
+  filter(!word2 %in% stop_words$word, !str_detect(word2, "'")) %>%
+  count(word1, word2, sort=TRUE)
+
+he_she
+
+```
+
+```{r}
+he_she_top <- he_she %>% group_by(word1) %>% top_n(20)
+
+ggplot(he_she_top, aes(x=word2, y=n, fill=word1)) +
+  geom_bar(stat="identity", show.legend = FALSE) +
+  coord_flip() +
+  facet_wrap(~ word1, scales="free")
+```
+
+
